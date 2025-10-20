@@ -4,12 +4,12 @@ A simple demo implementation of the ElGamal cryptosystem using OpenSSL on Window
 
 ## Features
 
-✅ **Key Generation**: Generate ElGamal key pairs with safe primes
-✅ **Encryption/Decryption**: Secure message encryption and decryption
-✅ **Digital Signatures**: ElGamal signature generation and verification
-✅ **Homomorphic Properties**: Demonstration of multiplicative homomorphism
-✅ **Memory Safe**: Uses smart pointers for automatic cleanup
-✅ **Error Handling**: Comprehensive error checking and reporting
+✅ **Key Generation**: Generate ElGamal key pairs with safe primes  
+✅ **Encryption/Decryption**: Secure message encryption and decryption  
+✅ **Digital Signatures**: ElGamal signature generation and verification  
+✅ **Homomorphic Properties**: Demonstration of multiplicative homomorphism  
+✅ **Memory Safe**: Uses smart pointers for automatic cleanup  
+✅ **Error Handling**: Comprehensive error checking and reporting  
 
 ## Requirements
 
