@@ -94,33 +94,28 @@ pacman -S mingw-w64-x86_64-openssl
 sudo apt-get install libssl-dev
 ```
 
-**Linux (Fedora/RHEL)**:
-```bash
-sudo dnf install openssl-devel
-```
-
 #### Compile
 
 **Windows (MinGW64)**:
 ```bash
-g++ -std=c++17 ElGamalSource.cpp lab.cpp -o elgamal.exe -lcrypto -lssl -lpsapi
+g++ -std=c++17 ElGamalSource.cpp lab.cpp -o SourceCode.exe -lcrypto -lssl -lpsapi
 ```
 
 **Linux/macOS**:
 ```bash
-g++ -std=c++17 ElGamalSource.cpp lab.cpp -o elgamal -lcrypto -lssl -lpthread
+g++ -std=c++17 ElGamalSource.cpp lab.cpp -o SourceCode -lcrypto -lssl -lpthread
 ```
 
 #### Run
 
 **Security Tests**:
 ```bash
-./elgamal
+./SourceCode
 ```
 
 **Interactive Demo**:
 ```bash
-./elgamal --demo
+./SourceCode --demo
 ```
 
 ### Option 3: VS Code with tasks.json
@@ -131,7 +126,7 @@ Create `.vscode/tasks.json`:
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build ElGamal",
+            "label": "Build SourceCode",
             "type": "shell",
             "command": "g++",
             "args": [
@@ -139,7 +134,7 @@ Create `.vscode/tasks.json`:
                 "ElGamalSource.cpp",
                 "lab.cpp",
                 "-o",
-                "elgamal",
+                "SourceCode",
                 "-lcrypto",
                 "-lssl",
                 "-lpthread"
@@ -162,19 +157,19 @@ Create `.vscode/launch.json` for debugging:
             "name": "Debug ElGamal Tests",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/elgamal",
+            "program": "${workspaceFolder}/SourceCode",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "Build ElGamal"
+            "preLaunchTask": "Build SourceCode"
         },
         {
             "name": "Debug ElGamal Demo",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/elgamal",
+            "program": "${workspaceFolder}/SourceCode",
             "args": ["--demo"],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "Build ElGamal"
+            "preLaunchTask": "Build SourceCode"
         }
     ]
 }
