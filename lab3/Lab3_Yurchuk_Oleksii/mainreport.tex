@@ -1,0 +1,1097 @@
+\section{Introduction}
+
+Криптографія з відкритим ключем революціонізувала, вирішивши проблему розподілу ключів, від яких потерпали 
+симетричні криптосистеми. Серед основних асиметричних криптосистем криптосистема Ель-Ґамаля, запропонована Тахером 
+Ель-Ґамалем у 1985 році~\cite{elgamal1985public}. Вона є однією з найширше досліджених схем. На відміну від RSA, 
+яка базується на проблемі розкладу цілих чисел на множники, безпека схеми Ель-Ґамаля базується на проблемі дискретного 
+логарифму (DLP) в скінченному полі $F_{p}^{*}$~\cite{menezes1996handbook}.
+
+В цій лабораторній я намагався зробити всебічний теоретичний аналіз криптосистеми ElGamal, розглянути її математичні 
+основи, властивості безпеки та застосування як у загальних, так і в спеціалізованих криптографічних протоколах.
+Більшу частину уваги я приділив реалізації, що стосуються бібліотеки OpenSSL на платформі Windows, вичерпно описавши 
+інформацію, яка є необхідною для практичного застосування.
+
+\subsection{Мета}
+
+Основні цілі мого дослідження наступні:
+\begin{itemize}
+    \item Описати математичні основи криптосистеми ElGamal
+    \item Проаналізувати припущення щодо безпеки та можливі наслідки атак
+    \item Дослідити застосовність ElGamal у загальних криптографічних протоколах (шифрування, цифрові підписи)
+    \item Описати теоретичну базу для реалізації на базі OpenSSL у ОС Windows
+    \item І, власне, зробити невелику реалізацію цієї схеми у себе на комп'ютері
+\end{itemize}
+
+\subsection{Історичне підґрунтя}
+
+Криптосистема ElGamal з'явилася в період інтенсивного розвитку криптографії з відкритим ключем. Після революційного прориву 
+у вигляді роботи Діффі та Хеллмана з обміну ключами~\cite{diffie1976new} та криптосистеми RSA~\cite{rivest1978method}, 
+інші дослідники почали шукали альтернативні підходи з іншими основами для параметрів безпеки. Внесок Ель-Ґамаля полягав не 
+лише в створенні схеми шифрування, а й алгоритмі цифрового підпису, який використовував складність обчислення дискретних 
+логарифмів~\cite{elgamal1985public}.
+
+\section{Математичне підґрунтя}
+
+\subsection{Алгебраїчні структури}
+
+\begin{definition}[Циклічна група]
+    ~\par Група $(G, \cdot)$ називається циклічною, якщо існує $g \in G$ такий що кожен елемент з $G$ може бути виражений через 
+    $g^{k}$ для деякого цілого $k$. Елемент $g$ називається генератором групи $G$.
+\end{definition}
+
+\begin{definition}[Скінченне поле]
+    ~\par Скінченним полем $\mathbb{F}_{p}$ (також позначають як $GF(p)$, для простого числа $p$) -- це множина \\ 
+    $\{0, 1, 2, \ldots, p-1\}$ з операціями додання і множення за модулем $p$. Мультиплікативна група цього поля 
+    визначається як $\mathbb{F}_{p}^{*} = \mathbb{F}_{p} \setminus \{0\}$ та має порядок $p-1$.
+\end{definition}
+
+\begin{theorem}[про кількість генераторів мультиплікативної групи поля]
+    ~\par Для довільного простого $p$, мультиплікативна група $\mathbb{F}_{p}^{*}$ є циклічною та має $\varphi(p-1)$ твірних елементів, 
+    де $\varphi$ -- функція Ойлера (Euler's totient function)~\cite{rosen2011elementary}.
+\end{theorem}
+
+\subsection{The Discrete Logarithm Problem}
+
+\begin{definition}[Discrete Logarithm Problem (DLP)]
+    ~\par Нехай $G$ -- циклічна група порядку $n$ з генератором $g$. Для заданого $h \in G$, задача DPL полягає в знаходженні 
+    цілого числа $x \in \{0, 1, \ldots, n-1\}$, такого що: $g^{x} = h$, або інакше кажучи: $x = \log_{g} h$~\cite{menezes1996handbook}.
+\end{definition}
+
+Обчислювальна складність розв'язання задачі DLP у правильно обраних мультиплікативних групах є основою безпеки ElGamal. 
+Найвідоміші алгоритми для розв'язання DLP:
+\begin{itemize}
+    \item \textbf{Baby-step Giant-step}: Time complexity $O(\sqrt{n})$, space complexity $O(\sqrt{n})$~\cite{shanks1971class}
+    \item \textbf{Pollard's Rho}: Time complexity $O(\sqrt{n})$, space complexity $O(1)$~\cite{pollard1978monte}
+    \item \textbf{Index Calculus}: Subexponential time for prime fields, $L_p[1/3, c]$ where \\ 
+    $L_p[\alpha, c] = \exp((c + o(1))(\ln p)^\alpha(\ln \ln p)^{1-\alpha})$~\cite{gordon1993discrete}
+    \item \textbf{Number Field Sieve}: Найкращий з відомих алгоритмів для великих простих полів~\cite{schirokauer1993discrete}
+\end{itemize}
+
+\subsection{Обчислювальні припущення}
+
+\begin{definition}[Обчислювальне припущення Computational Diffie-Hellman (CDH)]
+    ~\par Нехай задано $g$, $g^{a}$ та $g^{b}$ в циклічній групі $G$, що має порядок $n$. Обчислювально неможливо 
+    обчислити $g^{ab}$~\cite{boneh1998decision}.
+\end{definition}
+
+\begin{definition}[Припущення про диференціальну стійкість Decisional Diffie-Hellman (DDH)]
+    ~\par Нехай задано $g$, $g^{a}$, $g^{b}$ та $g^{c}$ в циклічній групі $G$. З обчислювальної точки зору неможливо 
+    розрізнити, чи $c = ab \pmod{n}$ чи $c$ є випадковим~\cite{boneh1998decision}.
+\end{definition}
+
+\noindent Безпека криптосистеми ElGamal базується на цих двох припущеннях, причому семантична безпека (semantic security) 
+вимагає саме DDH.
+
+\section{Схема шифрування Ель-Ґамаля}
+
+\subsection{Генерування ключів}
+
+\begin{algorithm}
+    \caption{ElGamal Key Generation}
+    \begin{algorithmic}[1]
+        \Require Параметр безпеки $\lambda$
+        \Ensure Public key $(p, g, h)$, private key $x$
+        \State Вибирають велике просте число $p$ (зазвичай $|p| \geq 2048$ bits)
+        \State Вибирають генератор $g$ з $\mathbb{F}_p^*$ (або з його великої підгрупи)
+        \State Вибирають випадковим чином privatev key $x \xleftarrow{\$} \mathbb{Z}_{p-1}$
+        \State Обчислюють відповідний йому public key $h \gets g^x \bmod p$
+        \State \Return Public key: $pk = (p, g, h)$, Private key: $sk = x$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Вибір параметрів}
+
+Безпека схеми ElGamal критично залежить від правильного вибору параметрів:
+
+\begin{itemize}
+    \item \textbf{Prime $p$}: Має бути щонаймешне 2048 bits для 112-bit security та 3072 bits for 128-bit security~\cite{barker2020recommendation}
+    \item \textbf{Generator $g$}: Може бути генератором як $\mathbb{F}_p^*$ так і підгрупи порядку $q$ де 
+        $q \vert (p-1)$ та $q$ є доволі великим (e.g., 256 bits)
+    \item \textbf{Private key $x$}: Рівномірно розподілений на множині $\{1, 2, \ldots, p-2\}$ 
+        (або $\{1, 2, \ldots, q-1\}$ якщо підгрупа)
+\end{itemize}
+
+\subsection{Шифрування}
+
+\begin{algorithm}
+    \caption{ElGamal Encryption}
+    \begin{algorithmic}[1]
+        \Require Public key $(p, g, h)$, повідомлення $m \in \mathbb{F}_p^*$
+        \Ensure Шифротекст $(c_1, c_2)$
+        \State Вибрати випадковим чином тимчасовий ключ $y \xleftarrow{\$} \mathbb{Z}_{p-1}$
+        \State Обчислити $c_1 \gets g^y \bmod p$
+        \State Обчислити "shared secret"{} $s \gets h^y \bmod p$
+        \State Обчислити $c_2 \gets m \cdot s \bmod p$
+        \State \Return Шифротекст: $C = (c_1, c_2)$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Правильність}
+
+Правильність шифрування за схемою ElGamal випливає з властивості:
+\begin{align*}
+    c_2 \cdot (c_1^x)^{-1} & = m \cdot h^y \cdot (g^y)^{-x} \bmod p  \\
+                           & = m \cdot (g^x)^y \cdot g^{-xy} \bmod p \\
+                           & = m \cdot g^{xy} \cdot g^{-xy} \bmod p  \\
+                           & = m \bmod p
+\end{align*}
+
+\subsection{Розшифрування}
+
+\begin{algorithm}
+    \caption{ElGamal Decryption}
+    \begin{algorithmic}[1]
+        \Require Private key $x$, шифрування $(c_1, c_2)$
+        \Ensure Відкритий текст $m$
+        \State Обчислити "shared secret"{} $s \gets c_1^x \bmod p$
+        \State Обчислити оберене за модулем $s^{-1} \gets s^{-1} \bmod p$
+        \State Відновлене повідомлення $m \gets c_2 \cdot s^{-1} \bmod p$
+        \State \Return Відкритий текст: $m$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Ефективність обчислень}
+
+Обчислювальні витрати:
+\begin{itemize}
+    \item \textbf{Key Generation}: 1 піднесення до степеня за модулем
+    \item \textbf{Encryption}: 2 піднесення до степеня за модулем, 1 модулярне множення
+    \item \textbf{Decryption}: 1 піднесення до степеня за модулем, 1 знаходження оборотного за модулем, 1 модулярне множення
+\end{itemize}
+
+Завдяки використанню швидких алгоритмів піднесення до степеня  таких як square-and-multiply, sliding window та 
+Montgomery multiplication, ці операції є ефективними для відповідних розмірів вхідних параметрів.
+
+\subsection{Шифрування повідомлення}
+
+Практичним викликом для ElGamal є те, що повідомлення повинні бути елементами $\mathbb{F}_p^*$. Існує декілька підходів:
+
+\begin{enumerate}
+    \item \textbf{Direct Encoding}: Для $m < p$, використовується $m$ напряму (потребує великого $p$)
+    \item \textbf{Hybrid Encryption}: Вкористовується схема ElGamal для шифрування симетричного ключа, а далі 
+        використовується симетричне шифрування (e.g., AES) для фактичного повідомлення~\cite{cryptoeprint:2001/108}
+    \item \textbf{Block Encoding}: Розбиття повідомлення на блоки, кожен з яких менше за $p$
+\end{enumerate}
+
+\section{Аналіз параметрів безпеки}
+
+\subsection{Визначення безпеки}
+
+\begin{definition}[IND-CPA Security]
+    ~\par Криптосистема є нерозрізнимою при атаці з обраним відкритим текстом (IND-CPA), якщо жоден супротивник за 
+    поліноміальний час не може розрізнити шифрування двох обраних відкритих текстів з імовірністю, значно вищою 
+    за $1/2$~\cite{goldwasser1984probabilistic}.
+\end{definition}
+
+\begin{theorem}[ElGamal IND-CPA Security]
+    ~\par Схема ElGamal є безпечнішою за IND-CPA за умови виконання припущення DDH в базовій групі~\cite{tsiounis1998security}.
+\end{theorem}
+
+\begin{proof}[Ідея доведення]
+    Зниження безпеки відбувається шляхом демонстрації того, що якщо супротивник може зламати безпеку IND-CPA ElGamal, то ми 
+    можемо побудувати алгоритм для вирішення проблеми DDH. Нехай задано DDH challenge $(g, g^a, g^b, g^c)$, ми визначаємо 
+    public key як $h = g^a$ та створюємо шифротекст у вигляді $(g^b, m_i \cdot g^c)$ для випадково обраного $i \in \{0,1\}$. 
+    Якщо $c = ab$, то це є дійсним шифруванням ElGamal; в іншому випадку -- випадковим. Здатність супротивника розрізнити 
+    ці випадки безпосередньо перекладається на вирішення DDH~\cite{tsiounis1998security}.
+\end{proof}
+
+\subsection{Піддатливіть та IND-CCA2}
+
+Критичною слабкістю базового ElGamal є його \textbf{піддатливість}: маючи шифротексти $(c_1, c_2)$, які шифрують 
+повідомлення $m$, будь хто можне створити $(c_1, c_2 \cdot r)$ що розшифровуватиметься до $m \cdot r$ для 
+довільного $r \in \mathbb{F}_p^*$.
+
+\begin{proposition}
+    ~\par Базове шифрування ElGamal не є безпечним за стандартом IND-CCA2 (indistinguishable при адаптивній атаці з вибором шифрованого тексту)
+\end{proposition}
+
+Для досягнення безпеки IND-CCA2, шифрування ElGamal можна вдосконалити за допомогою:
+\begin{itemize}
+    \item \textbf{Fujisaki-Okamoto transformation}~\cite{fujisaki1999secure}
+    \item \textbf{OAEP padding} (Optimal Asymmetric Encryption Padding)~\cite{bellare1994optimal}
+    \item \textbf{Cramer-Shoup cryptosystem} (варіант за Ель-Ґамалем)~\cite{cramer1998practical}
+\end{itemize}
+
+\subsection{Семантична безпека}
+
+\begin{theorem}[Semantic Security]
+    ~\par Шифрування ElGamal забезпечує семантичну безпеку за умови DDH. Зокрема, шифровані тексти не розкривають жодної 
+    інформації про відкриті тексти, крім їхньої довжини~\cite{goldwasser1984probabilistic}.
+\end{theorem}
+
+Рандомізація в шифруванні (за допомогою тимчасового ключа $y$) гарантує, що подвійне шифрування одного і того ж 
+повідомлення на виході дає різні шифровані тексти. Це є важливою властивістю для семантичної безпеки.
+
+\section{Схема цифрового підпису Ель-Ґамаля}
+
+\subsection{Генерація та перевірка підпису}
+
+\begin{algorithm}
+    \caption{ElGamal Signature Generation}
+    \begin{algorithmic}[1]
+        \Require Private key $x$, message $m$, public parameters $(p, g)$
+        \Ensure Signature $(r, s)$
+        \State Вибирається випадкових тимчасовий ключ $k \xleftarrow{\$} \mathbb{Z}_{p-1}^*$, де $\gcd(k, p-1) = 1$
+        \State Обчислюється $r \gets g^k \bmod p$
+        \State Обчислюється геш $h \gets H(m)$, де $H$ -- криптографічна геш-функція
+        \State Обчислюється $s \gets k^{-1}(h - xr) \bmod (p-1)$
+        \State \Return Signature: $\sigma = (r, s)$
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+    \caption{ElGamal Signature Verification}
+    \begin{algorithmic}[1]
+        \Require Public key $(p, g, h)$, message $m$, signature $(r, s)$
+        \Ensure \textbf{valid} or \textbf{invalid}
+        \State Перевіряється чи $0 < r < p$ та $0 < s < p-1$
+        \State Обчислюється геш $h \gets H(m)$
+        \State Перевіряється умова: $g^h \stackrel{?}{\equiv} h^r \cdot r^s \pmod{p}$
+        \If{equation holds}
+        \State \Return \textbf{valid}
+        \Else
+        \State \Return \textbf{invalid}
+        \EndIf
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Правильність підпису}
+
+Коректність підпису випливає з умови:
+\begin{align*}
+    h^r \cdot r^s & \equiv (g^x)^r \cdot (g^k)^s \pmod{p}           \\
+                  & \equiv g^{xr + ks} \pmod{p}                     \\
+                  & \equiv g^{xr + k \cdot k^{-1}(h - xr)} \pmod{p} \\
+                  & \equiv g^{xr + h - xr} \pmod{p}                 \\
+                  & \equiv g^h \pmod{p}
+\end{align*}
+
+\subsection{Питання щодо безпеки підписів}
+
+\textbf{Критичні вимоги:}
+\begin{enumerate}
+    \item \textbf{Унікальність тимчасового ключа}: Щоразу різне $k$ для різних повідомлень
+    \item \textbf{Секретність тимчасового ключа}: Якщо $k$ розкрито, то private key $x$ є скомпроментовним і може 
+        бути обчисленим як: $x \equiv r^{-1}(ks - h) \pmod{p-1}$
+    \item \textbf{Геш-функція}: Необхідно використовувати криптографічний хеш для запобігання екзистенційній підробці
+\end{enumerate}
+
+\begin{proposition}[Signature Key Recovery Attack]
+    ~\par Якщо два підписи $(r, s_1)$ та $(r, s_2)$ генеруються з одним і тим же тимчасовим ключем $k$ для повідомлень 
+    $m_1$ і $m_2$, приватний ключ може бути відновлений таким чином:
+    \begin{equation*}
+        x \equiv r^{-1} \left( \frac{H(m_1) - H(m_2)}{s_1 - s_2} \bmod (p-1) \right) \pmod{p-1}
+    \end{equation*}
+\end{proposition}
+
+\section{Розширені варіанти алгоритму}
+
+\subsection{ElGamal в підгрупах}
+
+Для підвищення ефективності ElGamal може працювати в підгрупах $\mathbb{F}_p^*$ простого порядку $q$, де $q | (p-1)$.
+
+\textbf{Переваги:}
+\begin{itemize}
+    \item Коротші підписи та шифровані тексти (size $|q|$ замість $|p|$)
+    \item Більш ефективний (з точки зору обчислень)
+    \item Відповідає структурі параметрів DSA
+\end{itemize}
+
+\textbf{Вибір параметрів:}
+\begin{itemize}
+    \item Вибрати "safe prime"{} $p = 2q + 1$, де $p$ та $q$ є простими числами
+    \item Або використати NIST-style parameters: $p$ в межах 2048-3072 bits, $q$ в межах 224-256 bits
+\end{itemize}
+
+\subsection{Використання еліптичних кривих зі схемою ElGamal}
+
+ElGamal природно поширюється на групи еліптичних кривих, пропонуючи значно менші розміри ключів за еквівалентного 
+розміру безпеки~\cite{koblitz1987elliptic, miller1986use}.
+
+\begin{algorithm}
+    \caption{EC-ElGamal Encryption}
+    \begin{algorithmic}[1]
+        \Require EC public key $(E, G, Q)$, message point $M \in E$
+        \Ensure Шифротекст $(C_1, C_2)$
+        \State Випадково обирається $k \xleftarrow{\$} \mathbb{Z}_n$ де $n = \text{order}(G)$
+        \State Обчислюється $C_1 \gets kG$
+        \State Обчислюється $C_2 \gets M + kQ$
+        \State \Return $(C_1, C_2)$
+    \end{algorithmic}
+\end{algorithm}
+
+\textbf{Security Equivalence:} Безпека EC-ElGamal зводиться до ECDLP (Elliptic Curve Discrete Logarithm Problem) 
+та EC-DDH~\cite{hankerson2006guide}.
+
+\subsection{Signed ElGamal}
+
+Для досягнення безпеки IND-CCA2 signed ElGamal поєднує шифрування з автентифікацією:
+
+\begin{enumerate}
+    \item Шифрування повідомлення: $(c_1, c_2) \gets \text{ElGamal.Enc}(pk, m)$
+    \item Генерування підпису: $\sigma \gets \text{Sign}(sk_{\text{sig}}, (c_1, c_2))$
+    \item Output: $(c_1, c_2, \sigma)$
+\end{enumerate}
+
+Ця конструкція досягає рівня безпеки IND-CCA2 в the random oracle model~\cite{bellare1993random}.
+
+\section{Загальні криптографічні протоколи з використанням схеми ElGamal}
+
+\subsection{Порогова криптографія (Threshold Cryptography)}
+
+Структура ElGamal природно підтримує схеми порогового дешифрування, де $t$ з $n$ сторін мають співпрацювати для 
+вдалого дешифрування~\cite{desmedt1994threshold}.
+
+\subsubsection{Порогове розшифрування}
+
+\textbf{Setup:}
+\begin{enumerate}
+    \item Private key $x$ передається за допомогою Shamir's secret sharing: $x = \sum\limits_{i=1}^t x_i \lambda_i$ 
+        де $\lambda_i$ --- лагранжові коефіцієнти
+    \item Кожна $i$ сторона володіє часткою $x_i$
+    \item Public key: $h = g^x$
+\end{enumerate}
+
+\textbf{Decryption:}
+\begin{enumerate}
+    \item За заданим шифротекстом $(c_1, c_2)$, кожна сторона $i$ обчислює часткове розшифрування: $d_i = c_1^{x_i}$
+    \item Зловмисник комбінує і відновлює повідомлення: $s = \prod_{i=1}^t d_i^{\lambda_i} = c_1^{\sum_{i=1}^t x_i \lambda_i} = c_1^x$
+    \item Recover message: $m = c_2 / s$
+\end{enumerate}
+
+\subsection{Повторне шифрування}
+
+Мультиплікативна гомоморфна властивість Ель-Ґамаля дозволяє перешифрувати повідомлення без знання його змісту(див.~\cite{chaum1981untraceable}).
+
+\begin{proposition}[ElGamal Re-encryption]
+    ~\par Задано шифротекст $(c_1, c_2)$. Будь хто може створити нове шифрування того ж повідомлння:
+    \begin{equation*}
+        (c_1', c_2') = (c_1 \cdot g^r, c_2 \cdot h^r) \text{ for random } r
+    \end{equation*}
+    Це шифрування також розшифровуватиметься у вихідне $m$.
+\end{proposition}
+
+\textbf{Застосування -- змішані мережі} Сервери можуть перемішувати та перешифровувати голоси/повідомлення, не 
+дізнаючись їхнього змісту, забезпечуючи анонімність користувачів~\cite{chaum1981untraceable}.
+
+\subsection{Перевірка шифрування}
+
+Схема ElGamal підтримує докази з нульовим розкриттям інформації про властивості відкритого тексту без його 
+розкриття~\cite{camenisch2003practical}.
+
+Як приклад -- шифрований текст $(c_1, c_2)$ шифрує значення в діапазоні $[0, 2^n-1]$ без розкриття значення.
+
+\section{Specialized Cryptographic Protocols}
+
+\subsection{Гомоморфні властивості}
+
+ElGamal демонструє \textbf{Мультиплікативний гомоморфізм}:
+
+\begin{theorem}[Multiplicative Homomorphism]
+    ~\par Дано два шифровані ElGamal тексти $(c_1, c_2)$, що шифрують $m_1$ та $(c_1', c_2')$ та $m_2$:
+    \begin{equation*}
+        (c_1 \cdot c_1', c_2 \cdot c_2') \text{ is a valid encryption of } m_1 \cdot m_2
+    \end{equation*}
+\end{theorem}
+
+\textbf{Застосування:}
+\begin{itemize}
+    \item Безпечне голосування: Множення зашифрованих голосів для підрахунку без розшифрування окремих голосів
+    \item Безпечні аукціони: Обчислення статистики зашифрованих ставок
+    \item Видобуток даних із збереженням конфіденційності (!)
+\end{itemize}
+
+\subsection{Electronic Voting Protocols}
+
+ElGamal широко використовується в електронному голосуванні завдяки своїй гомоморфній властивості та легкості 
+перевірки~\cite{cramer1997modular}.
+
+\subsubsection{Базовий протокол голосування}
+
+\begin{enumerate}
+    \item \textbf{Setup}: Виборча комісія за допомогою ElGamal генерує public key $(p, g, h)$
+    \item \textbf{Voting}: Виборець кодує свій голос як $m \in \{g^0, g^1\}$ -- ні/так, шифруючи: $(c_1, c_2) = (g^r, m \cdot h^r)$
+    \item \textbf{Proof}: Виборець надає доказ з нульовим розкриттям інформації, що $m \in \{1, g\}$
+    \item \textbf{Tallying}: Всі шифротексти між собою: $(C_1, C_2) = (\prod c_{1,i}, \prod c_{2,i})$
+    \item \textbf{Result}: Розшифрування $(C_1, C_2)$ для отримання $g^{\text{total}}$, обчислюється дискретний 
+            логарифм, для обрахунку total value.
+\end{enumerate}
+
+\subsection{Secure Multi-Party Computation}
+
+ElGamal слугує "цеглинкою"{} для протоколу безпеки multi-party computation (MPC)~\cite{goldreich1998secure}.
+
+\textbf{Приклад протоколу -- проблема мільйонерів:}
+Дві сторони хочуть визначити, хто з них багатший, не розкриваючи свого фактичного статку:
+
+\begin{enumerate}
+    \item Alice має багатство $w_A$, Bob має багатство $w_B$
+    \item Alice генерує ElGamal keypair, та публікує $pk$
+    \item Alice шифрує: $E(w_A)$
+    \item Bob обчислює: $E(w_A - w_B) = E(w_A) \cdot E(-w_B)$ використовуючи гомоморфізм
+    \item Використовуючи додаткові криптографічні методи, вони визначають sign без дешифрування
+\end{enumerate}
+
+\subsection{"Справедлива"{} криптографія}
+
+ElGamal можна модифікувати для support verifiable escrow, де довірена третя сторона може провести розшифрування за 
+певних умов~\cite{micali1996fair}.
+
+\textbf{Перевірка шифрування для третьої сторони:}
+\begin{enumerate}
+    \item Користувач шифрує повідомлення ключем одержувача: $(c_1, c_2)$
+    \item Користувач також шифрує тимчасовий ключ $y$ за допомогою escrow agent's key: $(c_1', c_2')$
+    \item Користувач надає доказ з нульовим розкриттям інформації, що обидва шифровані тексти використовують 
+        однаковий $y$
+    \item Escrow agent може відновити $y$, а потім і розшифрувати $(c_1, c_2)$, якщо має на те повноваження
+\end{enumerate}
+
+\section{Implementation with OpenSSL on Windows}
+
+\subsection{Архітектура OpenSSL для ElGamal}
+
+OpenSSL не надає вбудованих функцій шифрування ElGamal, але пропонує певні будівельні блоки для цього:
+
+\begin{itemize}
+    \item \textbf{BIGNUM library}: Арифметика довільної точності
+    \item \textbf{BN\_mod\_exp}: Модулярне піднесення до степеня (що є критично важливим для ElGamal)
+    \item \textbf{BN\_mod\_inverse}: Знаходження оберненого за модулем (для розшифрування)
+    \item \textbf{DH (Diffie-Hellman)}: Схема Діффі-Хеллмана має спільну структуру параметрів з ElGamal
+    \item \textbf{DSA}: Варіант для підпису ElGamal
+\end{itemize}
+
+\subsection{Використання інфраструктури DSA}
+
+OpenSSL's DSA implementation може бути адаптована для підпису Ель-Ґамаля:
+
+\begin{minted}{c}
+#include <openssl/dsa.h>
+#include <openssl/bn.h>
+
+// Generate DSA parameters (compatible with ElGamal)
+DSA *dsa = DSA_new();
+DSA_generate_parameters_ex(dsa, 2048, NULL, 0, NULL, NULL, NULL);
+
+// Generate key pair
+DSA_generate_key(dsa);
+
+// Access parameters
+const BIGNUM *p, *q, *g, *pub_key, *priv_key;
+DSA_get0_pqg(dsa, &p, &q, &g);
+DSA_get0_key(dsa, &pub_key, &priv_key);
+\end{minted}
+
+\subsection{Implementing ElGamal Encryption}
+
+\begin{minted}{c}
+#include <openssl/bn.h>
+#include <openssl/rand.h>
+
+typedef struct {
+    BIGNUM *p;      // Prime modulus
+    BIGNUM *g;      // Generator
+    BIGNUM *h;      // Public key (g^x mod p)
+    BIGNUM *x;      // Private key (only for decryption)
+} ElGamal_Key;
+
+typedef struct {
+    BIGNUM *c1;     // g^y mod p
+    BIGNUM *c2;     // m * h^y mod p
+} ElGamal_Ciphertext;
+
+int elgamal_encrypt(ElGamal_Key *pubkey, BIGNUM *message,
+                    ElGamal_Ciphertext *ciphertext, BN_CTX *ctx) {
+    BIGNUM *y = BN_new();
+    BIGNUM *shared_secret = BN_new();
+    
+    // Generate random ephemeral key y
+    BN_rand_range(y, pubkey->p);
+    
+    // Compute c1 = g^y mod p
+    BN_mod_exp(ciphertext->c1, pubkey->g, y, pubkey->p, ctx);
+    
+    // Compute shared secret = h^y mod p
+    BN_mod_exp(shared_secret, pubkey->h, y, pubkey->p, ctx);
+    
+    // Compute c2 = m * shared_secret mod p
+    BN_mod_mul(ciphertext->c2, message, shared_secret, 
+               pubkey->p, ctx);
+    
+    // Cleanup sensitive data
+    BN_clear_free(y);
+    BN_clear_free(shared_secret);
+    
+    return 1;
+}
+
+int elgamal_decrypt(ElGamal_Key *privkey, 
+                    ElGamal_Ciphertext *ciphertext,
+                    BIGNUM *message, BN_CTX *ctx) {
+    BIGNUM *shared_secret = BN_new();
+    BIGNUM *s_inv = BN_new();
+    
+    // Compute shared secret = c1^x mod p
+    BN_mod_exp(shared_secret, ciphertext->c1, privkey->x, 
+               privkey->p, ctx);
+    
+    // Compute inverse of shared secret
+    BN_mod_inverse(s_inv, shared_secret, privkey->p, ctx);
+    
+    // Recover message: m = c2 * s^(-1) mod p
+    BN_mod_mul(message, ciphertext->c2, s_inv, privkey->p, ctx);
+    
+    // Cleanup
+    BN_clear_free(shared_secret);
+    BN_clear_free(s_inv);
+    
+    return 1;
+}
+\end{minted}
+
+\subsection{Ефективне модулярне піднесення до степеня}
+
+OpenSSL надає оптимізовані реалізації цієї операції з використанням:
+\begin{itemize}
+    \item \textbf{Montgomery multiplication}: Ефективна модульна арифметика
+    \item \textbf{Windowing methods}: Зменшення кількості множень
+    \item \textbf{Chinese Remainder Theorem}: При деяких параметрів
+\end{itemize}
+
+\begin{minted}{c}
+// Using BN_CTX for temporary variables (thread-safe)
+BN_CTX *ctx = BN_CTX_new();
+BN_CTX_start(ctx);
+
+BIGNUM *result = BN_CTX_get(ctx);
+
+// Efficient modular exponentiation
+// Uses sliding window method automatically
+BN_mod_exp(result, base, exponent, modulus, ctx);
+
+BN_CTX_end(ctx);
+BN_CTX_free(ctx);
+\end{minted}
+
+\subsection{Особливості Windows платформи}
+
+\subsubsection{Джерело ентропії}
+На Windows, OpenSSL використовує:
+\begin{itemize}
+    \item \texttt{BCryptGenRandom} (Windows 10+) або \texttt{CryptGenRandom} (legacy)
+    \item Інструкції для CPU: RDRAND/RDSEED
+    \item Лічильники продуктивності системи
+\end{itemize}
+
+\subsubsection{Compilation and Linking}
+\begin{minted}{bash}
+# Using MinGW-w64
+gcc -o elgamal elgamal.c -I/c/OpenSSL/include ^
+    -L/c/OpenSSL/lib -lcrypto -lws2_32
+\end{minted}
+
+\subsection{Управління пам'яттю та безпека}
+
+\begin{minted}{c}
+// Secure memory allocation for sensitive data
+BIGNUM *private_key = BN_secure_new();
+
+// Clear sensitive data before freeing
+BN_clear_free(private_key);
+
+// For regular BIGNUMs
+BN_free(public_key);
+
+// Securely wipe memory buffer
+OPENSSL_cleanse(buffer, buffer_size);
+\end{minted}
+
+\subsection{Обробка помилок}
+
+\begin{minted}{c}
+#include <openssl/err.h>
+
+int elgamal_operation() {
+    if (!BN_mod_exp(result, base, exp, mod, ctx)) {
+        // Print OpenSSL error stack
+        unsigned long err = ERR_get_error();
+        char err_buf[256];
+        ERR_error_string_n(err, err_buf, sizeof(err_buf));
+        fprintf(stderr, "OpenSSL error: %s\n", err_buf);
+        return 0;
+    }
+    return 1;
+}
+\end{minted}
+
+\section{Аналіз продуктивності}
+
+\subsection{Обчислювальна складність}
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{|l|c|c|}
+        \hline
+        \textbf{Operation} & \textbf{Modular Exp.} & \textbf{Other Operations}             \\
+        \hline
+        Key Generation     & 1                     & 1 multiplication                      \\
+        Encryption         & 2                     & 1 multiplication                      \\
+        Decryption         & 1                     & 1 inversion, 1 multiplication         \\
+        \hline
+        Sign Generation    & 1                     & 1 inversion, 2 multiplication, 1 hash \\
+        Sign Verification  & 2                     & 1 multiplication, 1 hash              \\
+        \hline
+    \end{tabular}
+    \caption{Computational Costs of ElGamal}
+\end{table}
+
+Для $n$-bit модуля модульне піднесення до степеня вимагає $O(n^3)$ bit бітових операцій із використанням стандартних 
+алгоритмів або $O(n^2 \log n)$ з використанням методів на основі FFT~\cite{menezes1996handbook}.
+
+\subsection{Порівняння з RSA}
+
+\newpage %FORCED ...
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{|l|c|c|c|}
+        \hline
+        \textbf{Operation} & \textbf{ElGamal} & \textbf{RSA}    & \textbf{Ratio}       \\
+        \hline
+        Key Generation     & Moderate         & Slow            & ElGamal 5-10× faster \\
+        Encryption         & Slow             & Fast            & RSA 10-100× faster   \\
+        Decryption         & Moderate         & Slow            & Similar              \\
+        Ciphertext Size    & $2 \times$ size  & $1 \times$ size & ElGamal 2× larger    \\
+        \hline
+    \end{tabular}
+    \caption{ElGamal vs RSA Performance}
+\end{table}
+
+\textbf{Висновки:}
+\begin{itemize}
+    \item Шифрування в RSA є швидшим (малий відкритий показник $e = 65537$)
+    \item Генерація ключів в ElGamal є швидшою (немає вимоги до розкладу на прості множники)
+    \item Шифротексти за допомогою ElGamal удвічі більші (оскільки використано два елементи групи)
+    \item ElGamal забезпечує семантичну безпеку без заповнення (на відміну від класичного RSA)
+\end{itemize}
+
+\subsection{Порівняння з ElGamal Elliptic Curve}
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{Security (bits)} & \textbf{ElGamal $|p|$} & \textbf{EC-ElGamal} & \textbf{Ratio} \\
+        \hline
+        80                       & 1024                   & 160                 & 6.4:1          \\
+        112                      & 2048                   & 224                 & 9.1:1          \\
+        128                      & 3072                   & 256                 & 12:1           \\
+        192                      & 7680                   & 384                 & 20:1           \\
+        256                      & 15360                  & 512                 & 30:1           \\
+        \hline
+    \end{tabular}
+    \caption{Security Levels: ElGamal vs EC-ElGamal}
+\end{table}
+
+EC-ElGamal забезпечує значне зменшення розміру ключа, що призводить до прискорення операцій і зменшення вимог до 
+пропускної здатності мережі~\cite{hankerson2006guide}.
+
+\section{Security Recommendations}
+
+\subsection{Рекомендації щодо вибору параметрів ElGamal}
+
+\begin{enumerate}
+    \item \textbf{Modulus Size}: Мінімум 2048 bits для поточної безпеки (2025 рік), 3072 bits біт для довгострокового захисту (2030+)~\cite{barker2020recommendation}
+
+    \item \textbf{Safe Primes}: Використання $p = 2q + 1$ де числа $p$ та $q$ -- прості числа, що забезпечується великим порядком підгрупи
+
+    \item \textbf{Generator Selection}:
+          \begin{itemize}
+              \item Для цілої групи $\mathbb{F}_p^*$: довільний генератор підходить
+              \item Для підгупи: перевірка, чи $g^q \equiv 1 \pmod{p}$
+          \end{itemize}
+
+    \item \textbf{Random Number Generation}: Використання криптографічно захищеного PRNG (OpenSSL's \texttt{RAND\_bytes})
+
+    \item \textbf{Ephemeral Key Management}:
+          \begin{itemize}
+              \item Генерування щоразу нових $k$ або $y$ для кожної операції
+              \item Видалення одразу після використання
+              \item Ніколи не використовуйти повторно в різних повідомленнях
+          \end{itemize}
+\end{enumerate}
+
+\subsection{Implementation Security}
+
+\subsubsection{Запобігання атакам через бічні канали}
+
+\begin{itemize}
+    \item \textbf{Timing Attacks}: Використання реалізації з постійним часом
+          \begin{minted}{c}
+// OpenSSL's BN_mod_exp uses constant-time methods
+// when BN_FLG_CONSTTIME is set
+BN_set_flags(private_key, BN_FLG_CONSTTIME);
+BN_mod_exp(result, base, private_key, modulus, ctx);
+    \end{minted}
+
+    \item \textbf{Power Analysis}: Implement blinding techniques
+    \item \textbf{Cache-Timing}: Use scatter-gather table lookups
+\end{itemize}
+
+\subsubsection{Безпека пам'яті}
+
+\begin{minted}{c}
+// Always check return values
+if (!BN_rand_range(ephemeral_key, modulus)) {
+    // Handle error - do not proceed
+    return ERROR_CODE;
+}
+
+// Secure cleanup
+BN_clear_free(ephemeral_key);
+OPENSSL_cleanse(buffer, sizeof(buffer));
+\end{minted}
+
+\subsection{Безпека на рівні протоколу}
+
+\begin{enumerate}
+    \item \textbf{Key Freshness}: Регулярна зміна ключів
+    \item \textbf{Perfect Forward Secrecy}: Використання тимчасових ключів для кожного нового сеансу
+    \item \textbf{Authentication}: Поєднання шифрування з підписами або MAC
+    \item \textbf{Padding}: Використання structured padding для CCA2 безпеки
+    \item \textbf{Domain Separation}: Використання різних ключів для різних цілей
+\end{enumerate}
+
+\section{Практичне застосування та приклади з реального життя}
+
+\subsection{PGP and GNU Privacy Guard}
+
+Хоча PGP в основному використовує RSA та DSA, деякі його реалізації підтримують і ElGamal:
+\begin{itemize}
+    \item \textbf{Encryption}: ElGamal для інкапсуляції ключів
+    \item \textbf{Signatures}: DSA (варіант ElGamal)
+    \item \textbf{Hybrid Approach}: ElGamal шифрує симетричний ключ, а AES шифрує власне повідомлення
+\end{itemize}
+
+\subsection{Застосування у криптовалютних активах}
+
+Декілька протоколів криптовалюти використовують конструкції на основі схеми Ель-Ґамаля:
+
+\subsubsection{Pedersen Commitments}
+ElGamal використовується в Monero та інших монетах, що забезпечують конфіденційність:
+\begin{equation*}
+    C(m, r) = g^m h^r
+\end{equation*}
+Обчислювальне приховування та ідеальне зв'язування за DLP~\cite{pedersen1991non}.
+
+\subsubsection{Конфіденційні транзакції}
+Розширення гомоморфізму Ель-Ґамаля для приховування сум транзакцій при забезпеченні підтвердження їх дійсності~\cite{maxwell2016confidential}.
+
+\subsection{Безпечні системи голосування}
+
+\textbf{Helios Voting System}: Електронне голосування з відкритим кодом з використанням ElGamal~\cite{adida2008helios}
+\begin{itemize}
+    \item Гомоморфне підрахунку голосів без розшифрування окремих голосів
+    \item Доступна публічна перевірка за допомогою доказів з нульовим розкриттям інформації
+    \item Використовується в університетських виборах, організаційних голосуваннях
+\end{itemize}
+
+\subsection{Хмарна безпека}
+
+\textbf{Searchable Encryption}:ElGamal дозволяє здійснювати пошук зашифрованих даних::
+\begin{itemize}
+    \item Шифрування ключових слів за допомогою ElGamal
+    \item Використовуйте гомоморфні властивості для перевірки рівності
+    \item Збереження конфіденційності при увімкненні хмарного пошуку~\cite{boneh2004public}
+\end{itemize}
+
+\section{Advanced Usage}
+
+\subsection{Zero-Knowledge Proofs for ElGamal}
+
+Prove knowledge of $m$ у шифротексті $(c_1, c_2) = (g^y, m h^y)$ без розкриття $m$ або $y$:
+
+\begin{algorithm}
+    \caption{Schnorr-like ZK Proof для знання відкритого тексту ElGamal}
+    \begin{algorithmic}[1]
+        \State \textbf{Prover} chooses random $r \xleftarrow{\$} \mathbb{Z}_p$
+        \State \textbf{Prover} sends commitment: $t = g^r$
+        \State \textbf{Verifier} sends challenge: $c \xleftarrow{\$} \mathbb{Z}_p$
+        \State \textbf{Prover} computes response: $s = r + cy \bmod (p-1)$
+        \State \textbf{Verifier} checks: $g^s \stackrel{?}{=} t \cdot c_1^c$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Шифрування для декількох одержувачів}
+
+ElGamal може бути розширений для ефективного шифрування трансляції, де один шифрований текст розшифровується в 
+одне і те ж повідомлення для декількох одержувачів~\cite{bellare2000multi}.
+
+\textbf{Побудова:}
+\begin{enumerate}
+    \item Одержувачі мають public keys $h_1 = g^{x_1}, \ldots, h_n = g^{x_n}$
+    \item Відправник генерує єдиний ephemeral key $y$
+    \item Шифротекст: $(c_1, c_{2,1}, \ldots, c_{2,n}) = (g^y, m h_1^y, \ldots, m h_n^y)$
+    \item Кожен одержувач $i$ розшифровує: $m = c_{2,i} / c_1^{x_i}$
+\end{enumerate}
+
+\subsection{Identity-Based ElGamal}
+
+Розширення шифрування на основі ідентичності з використанням білінійних пар:
+\begin{itemize}
+    \item Відкритий ключ користувача, отриманий з ідентифікаційного рядка
+    \item Немає потреби в сертифікатах відкритих ключів
+    \item Приватний ключ, виданий довіреним органом
+\end{itemize}
+
+\section{Порівняння ElGamal з іншими криптосистемами}
+
+\subsection{Порівняння функцій}
+
+\begin{table}[ht]
+    \centering
+    \small
+    \begin{tabular}{|l|c|c|c|c|}
+        \hline
+        \textbf{Feature}       & \textbf{RSA} & \textbf{ElGamal} & \textbf{ECC} & \textbf{Paillier} \\
+        \hline
+        Encryption             & Yes          & Yes              & Yes          & Yes               \\
+        Signatures             & Yes          & Yes              & Yes          & No                \\
+        Homomorphic            & Partially    & Multiplicative   & No           & Additive          \\
+        Semantic Security      & No*          & Yes              & Yes          & Yes               \\
+        Ciphertext Size        & $1 \times$   & $2 \times$       & $2 \times$   & $1 \times$        \\
+        Key Gen Speed          & Slow         & Fast             & Fast         & Slow              \\
+        Encryption Speed       & Fast         & Moderate         & Moderate     & Slow              \\
+        Decryption Speed       & Slow         & Moderate         & Moderate     & Slow              \\
+        Key Size (128-bit sec) & 3072         & 3072             & 256          & 3072              \\
+        Standardization        & High         & Moderate         & High         & Low               \\
+        Patent Issues          & No           & No               & Some         & Some              \\
+        \hline
+        \multicolumn{5}{l}{* Вимагає заповнення (OAEP) для семантичної безпеки}
+    \end{tabular}
+    \caption{Порівняння асиметричних криптосистем}
+\end{table}
+
+\subsection{Порівняння основ безпеки}
+
+\begin{itemize}
+    \item \textbf{RSA}: Integer factorization problem
+    \item \textbf{ElGamal}: Discrete logarithm problem (DLP)
+    \item \textbf{ECC}: Elliptic curve discrete logarithm problem (ECDLP)
+    \item \textbf{Paillier}: Decisional composite residuosity assumption
+\end{itemize}
+
+Всі вони вважаються вразливими до квантових обчислень; постквантові альтернативи включають схеми на основі решіток
+(NTRU, Kyber) та кодів (McEliece)~\cite{bernstein2009post}.
+
+\section{Майбутні напрямки для досліджень}
+
+\subsection{Думки про Post-Quantum світ}
+
+Shor's algorithm~\cite{shor1997polynomial} вирішує DLP за поліноміальний час на квантових комп'ютерах:
+\begin{itemize}
+    \item ElGamal є вразливим до достатньо великих квантових комп'ютерів
+    \item Приблизний час 2040-ті -- для квантових комп'ютерів, що мають значення для криптографії
+    \item Необхідні стратегії міграції до постквантових альтернатив
+\end{itemize}
+
+\textbf{Квантово-стійкі альтернативи:}
+\begin{itemize}
+    \item \textbf{На основі решітки}: NTRU, Kyber (стандарт NIST)
+    \item \textbf{На основі коду}: McEliece
+    \item \textbf{Multivariate}: Rainbow
+    \item \textbf{На основі гешу}: SPHINCS+
+\end{itemize}
+
+\subsection{Розширення протоколу}
+
+\textbf{Активні напрямки досліджень:}
+\begin{itemize}
+    \item \textbf{Функціональне шифрування}: функції дешифрування відкритих текстів
+    \item \textbf{Повторне шифрування проксі}: делегування прав на дешифрування
+    \item \textbf{Обчислення з перевіркою}: доведення правильності зашифрованих обчислень
+\end{itemize}
+
+\section{Implementation Roadmap for OpenSSL}
+
+\subsection{Етап 1: Базова реалізація}
+
+\textbf{Цілі:}
+\begin{enumerate}
+    \item Впровадити генерацію ключів ElGamal за допомогою OpenSSL BIGNUM
+    \item Впровадити функції шифрування/дешифрування
+    \item Впровадити генерації/верифікації підпису
+    \item Створення комплексного набору тестів
+\end{enumerate}
+
+\newpage % FORCED ...
+
+\textbf{Ключові компоненти:}
+\begin{minted}{c}
+// Data structures
+typedef struct elgamal_key_st ELGAMAL_KEY;
+typedef struct elgamal_ctx_st ELGAMAL_CTX;
+
+// API functions
+ELGAMAL_KEY* ElGamal_new(void);
+void ElGamal_free(ELGAMAL_KEY *key);
+int ElGamal_generate_key(ELGAMAL_KEY *key, int bits);
+int ElGamal_encrypt(ELGAMAL_CTX *ctx, const BIGNUM *plaintext,
+                    BIGNUM *c1, BIGNUM *c2);
+int ElGamal_decrypt(ELGAMAL_CTX *ctx, const BIGNUM *c1,
+                    const BIGNUM *c2, BIGNUM *plaintext);
+\end{minted}
+
+\subsection{Етап 2: Інтеграція протоколу}
+
+\textbf{Цілі:}
+\begin{enumerate}
+    \item Впровадити гібридне шифрування (ElGamal + AES)
+    \item Додати підтримку zero-knowledge proof
+    \item Впровадити threshold cryptography
+    \item Створити демонстраційні приклади для протоколу
+\end{enumerate}
+
+\subsection{Етап 3: Оптимізація}
+
+\textbf{Цілі:}
+\begin{enumerate}
+    \item Впровадити constant-time operations
+    \item Додати засоби захисту від атак через побічні канали
+    \item Тестування та налагодження продуктивності
+    \item Аудит безпеки та формальна верифікація
+\end{enumerate}
+
+\subsection{Додаткові settings (Development Tools)}
+
+\begin{itemize}
+    \item \textbf{IDE}: Visual Studio 2022, CLion
+    \item \textbf{Build System}: CMake for cross-platform compatibility
+    \item \textbf{Testing}: Google Test, OpenSSL test framework
+    \item \textbf{Profiling}: VTune, Windows Performance Analyzer
+    \item \textbf{Memory Checking}: Dr. Memory, Application Verifier
+\end{itemize}
+
+\section{Висновки}
+
+Криптосистема ElGamal є фундаментальним внеском у криптографію з відкритим ключем, пропонуючи унікальні
+властивості, що відрізняють її від інших асиметричних схем. Вона базується на проблемі дискретного логарифму 
+яка власне забезпечує гарантії безпеки, що відрізняються від систем на основі факторизації, таких як RSA, 
+сприяючи криптографічній різноманітності.
+
+\subsection{Ключові переваги}
+
+\begin{enumerate}
+    \item \textbf{Семантична безпека:} ймовірнісне шифрування забезпечує семантичну безпеку за умови DDH
+    \item \textbf{Гомоморфні властивості:} мультиплікативний гомоморфізм дозволяє створювати протоколи, що 
+        зберігають конфіденційність
+    \item \textbf{Простота:} концептуально елегантна з простими доказами безпеки
+    \item \textbf{Гнучкість:} легко адаптується до різних алгебраїчних структур (підгрупи, еліптичні криві)
+    \item \textbf{Сумісність з різними протоколами:} природньо підходить для порогової криптографії, голосування
+\end{enumerate}
+
+\subsection{Практичне застосування}
+
+\begin{enumerate}
+    \item \textbf{Розширення шифрованого тексту:} $\times 2$ більший обсяг порівняно з RSA
+    \item \textbf{Пластичність:} для деяких застосувань потрібні додаткові заходи (підписи, CCA2-заповнення)
+    \item \textbf{Продуктивність:} повільніше шифрування, ніж RSA, але швидше генерування ключів
+    \item \textbf{Стандартизація:} менш стандартизований, ніж RSA/ECC у основних протокола
+\end{enumerate}
+
+\subsection{Значення для майбутніх досліджень}
+
+Важливість ElGamal's виходить за межі його безпосереднього використання:
+\begin{itemize}
+    \item Основа для численних прогресивних протоколів (голосування, MPC, гомоморфне шифрування)
+    \item Теоретичний інструмент для освоєння public-key cryptography
+    \item Еталон для порівняння нових криптографічних схем
+    \item Освітня цінність у демонстрації основних криптографічних концепцій
+\end{itemize}
+
+\newpage 
+
+\selectlanguage{english}
+\printbibliography
+
+\newpage % FORCED ...
+\appendix
+
+\section{Умовні позначення}
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{|l|l|}
+        \hline
+        \textbf{Notation}     & \textbf{Meaning}                                 \\
+        \hline
+        $\mathbb{Z}_n$        & Integers modulo $n$: $\{0, 1, \ldots, n-1\}$     \\
+        $\mathbb{Z}_n^*$      & Multiplicative group modulo $n$ (coprime to $n$) \\
+        $\mathbb{F}_p$        & Finite field with $p$ elements (prime $p$)       \\
+        $\mathbb{F}_p^*$      & Multiplicative group of $\mathbb{F}_p$           \\
+        $g^x \bmod p$         & Modular exponentiation                           \\
+        $a \equiv b \pmod{n}$ & $a$ is congruent to $b$ modulo $n$               \\
+        $\log_g h$            & Discrete logarithm of $h$ to base $g$            \\
+        $x \xleftarrow{\$} S$ & $x$ chosen uniformly at random from set $S$      \\
+        $\gcd(a,b)$           & Greatest common divisor of $a$ and $b$           \\
+        $\varphi(n)$          & Euler's totient function                         \\
+        $|x|$                 & Bit length of $x$                                \\
+        $H(\cdot)$            & Cryptographic hash function                      \\
+        $\stackrel{?}{=}$     & Equality check/verification                      \\
+        \hline
+    \end{tabular}
+    \caption{Умовні позначення}
+\end{table}
+
+\section{Sample OpenSSL Code: Complete ElGamal Implementation}
+
+\begin{minted}{c}
+// elgamal_complete.h
+#ifndef ELGAMAL_H
+#define ELGAMAL_H
+
+#include <openssl/bn.h>
+
+typedef struct {
+    BIGNUM *p;
+    BIGNUM *g;
+    BIGNUM *h;      // Public key
+    BIGNUM *x;      // Private key (NULL for public-only)
+} ElGamal_Key;
+
+// Key management
+ElGamal_Key* ElGamal_Key_new(void);
+void ElGamal_Key_free(ElGamal_Key *key);
+int ElGamal_generate_parameters(ElGamal_Key *key, int bits);
+int ElGamal_generate_key(ElGamal_Key *key);
+
+// Encryption/Decryption
+int ElGamal_encrypt(const ElGamal_Key *pubkey, 
+                   const BIGNUM *message,
+                   BIGNUM *c1, BIGNUM *c2);
+int ElGamal_decrypt(const ElGamal_Key *privkey,
+                   const BIGNUM *c1, const BIGNUM *c2,
+                   BIGNUM *message);
+
+// Utility functions
+int ElGamal_verify_parameters(const ElGamal_Key *key);
+void ElGamal_print_key(const ElGamal_Key *key);
+
+#endif // ELGAMAL_H
+\end{minted}
+
+\section{Основні статті}
+\begin{itemize}
+    \item ElGamal, T. (1985). "A Public Key Cryptosystem and a Signature Scheme Based on Discrete Logarithms"
+    \item Diffie, W., Hellman, M. (1976). "New Directions in Cryptography"
+    \item Goldwasser, S., Micali, S. (1984). "Probabilistic Encryption"
+    \item Menezes, van Oorschot, Vanstone: "Handbook of Applied Cryptography"
+    \item Katz, Lindell: "Introduction to Modern Cryptography"
+    \item Stinson, Paterson: "Cryptography: Theory and Practice"
+\end{itemize}
+
+\section{Гайди для реалізації схеми ElGamal}
+\begin{itemize}
+    \item OpenSSL Documentation: \url{https://www.openssl.org/docs/}
+    \item "Network Security with OpenSSL" by Viega, Messier, Chandra
+    \item "Implementing Cryptography Using Python" by Shannon Bray
+\end{itemize}

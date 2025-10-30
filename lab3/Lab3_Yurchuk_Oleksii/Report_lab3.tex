@@ -1,0 +1,54 @@
+\documentclass{article}
+\input{packages.tex}
+
+\addbibresource{references.bib}
+
+\begin{document}
+\input{title.tex}
+
+\makeatletter
+\renewcommand{\tableofcontents}{
+  \clearpage
+  \thispagestyle{empty}
+  \begin{center}
+          \bfseries\Large\MakeUppercase{Зміст}
+  \end{center}
+  
+  \addvspace{42pt}
+  \@starttoc{toc}
+}
+\renewcommand{\@pnumwidth}{2em}
+\renewcommand{\@tocrmarg}{3em}
+\makeatother
+
+\tableofcontents
+\newpage
+
+\cleardoublepage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\newpage
+
+% Clear the header and footer
+\fancyhead{}
+\fancyfoot{}
+% Set the right side of the footer to be the page number
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyfoot[C]{
+  \begin{textblock*}{2cm}(20cm,27.3cm) % bottom right corner of A4
+    \small\thepage
+  \end{textblock*}
+}
+\pagestyle{fancy}
+
+\newtheorem*{remark}{Зауваження:}
+\newtheorem{definition}{Означення}[section]
+\newtheorem{theorem}{Теорема}[section]
+\newtheorem{lemma}[theorem]{Лема}
+\newtheorem*{proposition}{Припущення:}
+\newtheorem{example}{Приклад}[section]
+
+\input{mainreport.tex}
+
+\end{document}
